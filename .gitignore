@@ -1,0 +1,27 @@
+.venv/
+__pycache__/
+*.pyc
+
+# The private eval set and its results derive from a private library
+evals/questions.yaml
+evals/results/
+
+# Secrets, private deployment settings and local runtime data
+_shared/config/secrets.env
+_shared/config/settings.local.yaml
+_shared/logs/
+data/
+
+# Editor / local tooling
+.vscode/
+.idea/
+.claude/
+graphify-out/
+*.log
+Thumbs.db
+
+# Developer notes (kept locally, not published; public docs live in docs/)
+CLAUDE.md
+CONTEXT.md
+*/CONTEXT.md
+_templates/

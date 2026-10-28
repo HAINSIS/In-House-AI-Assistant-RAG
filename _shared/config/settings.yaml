@@ -1,0 +1,202 @@
+# inhouse-ai settings. Hand-edit freely; missing keys fall back to the
+# defaults in _shared/settings.py. Read once at startup.
+
+# Which provider answers. "auto" = the first provider below whose API key is
+# set. Override per run with: app/main.py --provider deepseek
+active_provider: auto
+
+# Any provider works. kind: anthropic (native SDK, explicit caching) or
+# openai_compatible (any OpenAI-style /chat/completions API).
+# `model` blank = not usable yet; find ids with:
+#   app/main.py --provider <name> --list-models
+# use_proxy: false for endpoints reachable without the VPN proxy (domestic,
+# local); the proxy has a data limit.
+# ORDER MATTERS for "auto": free providers first, so a paid key is never used
+# by accident. Free tiers checked 2026-10-28; they change, re-check yearly.
+providers:
+  # --- free -------------------------------------------------------------
+  zhipu:              # free model, official docs; key: bigmodel.cn console
+    kind: openai_compatible
+    api_key_env: ZHIPU_API_KEY
+    base_url: https://open.bigmodel.cn/api/paas/v4
+    model: glm-4.7-flash
+    use_proxy: false
+    # The free model often returns 429 "访问量过大" (server busy, not our quota).
+    # 6 retries with the SDK's backoff waits ~25 s before giving up.
+    max_retries: 6
+    min_interval_s: 3              # eval runner: pause between calls on the free tier
+    extra_body:
+      # Measured 2026-10-28, same one-sentence question: off = 39 output
+      # tokens / 2.7 s, on = 558 tokens / 12.2 s.
+      thinking: {type: disabled}
+  gemini:             # free tier, rate-limited; key: aistudio.google.com
+    kind: openai_compatible       # free-tier prompts may be used by Google: sample corpus only
+    api_key_env: GEMINI_API_KEY
+    base_url: https://generativelanguage.googleapis.com/v1beta/openai/
+    model: ""                     # pick a Flash model from --list-models
+  openrouter:         # ":free" models, 20 req/min, 50 req/day under $10 credit; key: openrouter.ai
+    kind: openai_compatible
+    api_key_env: OPENROUTER_API_KEY
+    base_url: https://openrouter.ai/api/v1
+    model: google/gemma-4-31b-it:free   # live free list checked 2026-10-28
+  qwen:               # new-user free quota, then paid; key: Alibaba Cloud Model Studio
+    kind: openai_compatible
+    api_key_env: DASHSCOPE_API_KEY
+    base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
+    model: qwen-plus
+    use_proxy: false
+  # --- paid ---------------------------------------------------------------
+  deepseek:
+    kind: openai_compatible
+    api_key_env: DEEPSEEK_API_KEY
+    base_url: https://api.deepseek.com
+    model: deepseek-chat
+    use_proxy: false
+  anthropic:
+    kind: anthropic
+    api_key_env: ANTHROPIC_API_KEY
+    model: claude-opus-5-5
+  moonshot:
+    kind: openai_compatible
+    api_key_env: MOONSHOT_API_KEY
+    base_url: https://api.moonshot.cn/v1
+    model: ""
+    use_proxy: false
+  openai:
+    kind: openai_compatible
+    api_key_env: OPENAI_API_KEY
+    base_url: https://api.openai.com/v1
+    model: ""
+  # --- local --------------------------------------------------------------
+  ollama:
+    kind: openai_compatible_local      # no key needed
+    api_key_env: OLLAMA_API_KEY
+    base_url: http://localhost:11434/v1
+    model: ""
+    use_proxy: false
+    # extra_body passes provider-specific knobs straight through, e.g. a
+    # reasoning-effort or thinking switch. Check the provider's docs.
+
+# Token budget. Every default here leans toward fewer tokens; 06_cost will
+# measure and tune them against the evals.
+model:
+  # Hard cap on output (and thinking) tokens per answer. A truncated answer
+  # shows "stop: max_tokens" in the status line; raise it then, not before.
+  max_tokens: 4000
+  # Anthropic only: low | medium | high | xhigh | max. The biggest lever on
+  # thinking tokens. Opus 5.5 can't disable thinking, so low is the floor.
+  effort: low
+  # Anthropic only: explicit prompt caching (cache reads ~0.1x input price).
+  # OpenAI-compatible providers cache stable prefixes automatically.
+  cache: true
+  # Anthropic only: server-side refusal fallback (beta).
+  fallbacks: true
+
+client:
+  max_retries: 3
+  timeout_s: 600
+
+history:
+  # Turns (question + answer) kept as context. When exceeded, the oldest half
+  # is dropped at once, so the cached prefix stays stable between drops
+  # instead of changing every turn.
+  max_turns: 6
+
+# Kept short: it is resent with every request.
+system_prompt: |
+  You are inhouse-ai, an assistant for one person's workspace of projects,
+  research and documents. Answer in as few words as the question needs. If
+  you don't have the information, say so instead of guessing.
+
+# The local index (02_ingest). Embedding runs on this machine: zero API tokens.
+index:
+  dir: data/demo/index            # gitignored
+  embed_model: BAAI/bge-m3        # multilingual (en + zh), 1024-dim
+  device: auto                    # cuda if available, else cpu
+  batch_size: 16                  # chunks per batch
+  cards_per_write: 500            # cards per write to disk (resume granularity)
+  max_chunk_words: 300            # ~400 tokens: what one search hit costs to send
+  hf_endpoint: ""                 # empty = huggingface.co; set a mirror if it is slow where you are
+
+# Retrieval-augmented answering (03_retrieve). Values chosen on the dev split.
+retrieval:
+  k: 5                  # papers per question (best chunk each, <=~400 tokens):
+                        # dev lookups in top 3/5/8 = 21/22/22, so 8 buys nothing
+  min_similarity: 0.55  # below this, answer "Not in the library." with no model
+                        # call. Dev: unanswerable max 0.527, lookup/multi min 0.576
+  relative_cutoff: 0.08 # 06_cost: of the top k, keep papers within 0.08 similarity
+                        # of the best. Dev, offline: same recall as plain k=5
+                        # (lookup 22/23, multi 6/10) with 3.5 sources instead of 5
+                        # (~2,115 -> ~1,475 source tokens per question)
+  # Replaces system_prompt when retrieval is on. Byte-stable: keep dates and
+  # IDs out of it so provider prefix caching keeps working.
+  system_prompt: |
+    You answer questions about the user's library of research papers, using only
+    the numbered sources given with each question. Cite every paper you rely on
+    by its number in square brackets, like [2]; never write titles out, the app
+    adds them. If none of the sources answers the question, reply exactly:
+    Not in the library.
+    Be brief: a sentence or two, or a short list.
+
+# Tool path (04_tools). Only questions matching `route` get tools: every
+# tool-path request resends the tool specs (~400 tokens) and needs a second
+# round trip, so the plain retrieval path stays the default.
+tools:
+  route: '\b(how many|number of|count)\b'   # case-insensitive
+  max_steps: 4          # model turns per question (tool calls + final answer)
+  system_prompt: |
+    You answer questions about the user's library of research papers by calling
+    the tools. For "how many" questions call count_papers with the filters the
+    question states; if a venue or subtheme name might not be exact, call
+    list_values with contains= first. Answer with the number in one sentence.
+
+# Access control (05_access). Simulated users of one "company": two teams, a
+# guest, and the owner. Enforced as index filters and tool allowlists, not
+# prompt instructions. `researches` names the paper groups a role may see
+# (the demo has two); `researches` and `tools` take a list or "all". Papers
+# with no group ("unassigned") are visible only under "all".
+access:
+  default_user: owner           # CLI without --user; MCP server unless INHOUSE_USER is set
+  users:
+    owner: owner
+    safety-analyst: safety-team
+    energy-analyst: energy-team
+    visitor: guest
+  roles:
+    owner:       {researches: all, tools: all}
+    safety-team: {researches: [pedestrian-safety], tools: all}
+    energy-team: {researches: [ev-charging], tools: all}
+    guest:       {researches: [pedestrian-safety], tools: [count_papers, search_papers]}
+
+# Cost control (06_cost) and tracing (07_observe) share one local SQLite file.
+cost:
+  db: data/inhouse.sqlite       # gitignored
+  # USD per million tokens. Only prices known from the provider's own table
+  # (Anthropic: published API prices, 2026-10; Zhipu glm-4.7-flash: free). A model missing here costs "unknown", never a guess.
+  prices:
+    glm-4.7-flash:     {input: 0,    cached_input: 0,    output: 0}
+    claude-opus-5-5:   {input: 4.00, cached_input: 0.20, cache_write: 5.00, output: 20.00}
+    claude-sonnet-5-5: {input: 2.00, cached_input: 0.20, cache_write: 2.50, output: 10.00}
+  reference_model: claude-opus-5-5   # every answer also shows what it would cost here
+  answer_cache:
+    enabled: true
+    ttl_hours: 168                    # a week; re-ingest or a settings change also invalidates
+  # Daily token budget per role (input + cached + output, all providers);
+  # null = unlimited. Over budget = refusal with no model call.
+  daily_tokens:
+    owner: null
+    safety-team: 200000
+    energy-team: 200000
+    guest: 20000
+
+observe:
+  db: data/inhouse.sqlite           # traces table, same file as the cost ledger
+
+# The corpus: a folder of paper cards (Markdown with YAML frontmatter), and
+# optionally a folder of groups used for access control. The demo corpus is
+# built by `python demo/build_demo_corpus.py` from OpenAlex (CC0 metadata).
+# A private deployment overrides this in settings.local.yaml.
+corpus:
+  root: data/demo               # relative to the repo
+  papers_dir: papers
+  researches_dir: groups

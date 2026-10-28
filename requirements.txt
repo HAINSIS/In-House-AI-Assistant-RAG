@@ -1,0 +1,20 @@
+# GPU PyTorch first (the PyPI torch wheel on Windows is CPU-only). Windows + CUDA:
+#   uv pip install --python .venv torch==2.9.1 --index-url https://download.pytorch.org/whl/cu126
+# Elsewhere: install torch for your platform from pytorch.org, then this file.
+
+# Model providers: native Anthropic SDK (explicit caching, refusal fallback)
+# and the OpenAI SDK for every OpenAI-compatible API (DeepSeek, Qwen, Gemini,
+# Moonshot, Zhipu, OpenRouter, Ollama, OpenAI).
+anthropic==2.3.0
+openai==3.40.0
+
+# 02_ingest: local embeddings (bge-m3) and the embedded vector + full-text store
+sentence-transformers==6.2.0
+lancedb==0.40.0
+pyarrow==26.0.0
+
+# 04_tools: MCP server (2.x API: from mcp.server import MCPServer)
+mcp==2.3.0
+
+# Config
+PyYAML==6.0.3
