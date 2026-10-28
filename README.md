@@ -83,8 +83,8 @@ The demo builds a 300-paper corpus from [OpenAlex](https://openalex.org)
 without a private library.
 
 ```bash
-git clone https://github.com/HAINSIS/In-House-AI-Assistant-RAG-.git
-cd In-House-AI-Assistant-RAG-
+git clone https://github.com/HAINSIS/In-House-AI-Assistant-RAG.git
+cd In-House-AI-Assistant-RAG
 uv venv --seed --python 3.11 .venv
 # PyTorch first (the version the results were produced with); CUDA build:
 uv pip install --python .venv torch==2.9.1 --index-url https://download.pytorch.org/whl/cu126
